@@ -4,12 +4,16 @@ import os
 import json
 import uuid
 import random
+import time
 from datetime import datetime
-
+from streamlit_autorefresh import st_autorefresh
 # ==========================================
 # 1. Configuration & Setup
 # ==========================================
 st.set_page_config(page_title="AI Companion", page_icon="💖", layout="wide")
+
+# Auto-refresh every 20 seconds for proactive texting in the background
+st_autorefresh(interval=20000, key="data_refresh")
 
 st.markdown("""
 <style>
@@ -34,8 +38,12 @@ def load_history():
             "user_name": "Vivek",
             "ai_name": "Nithya",
             "ai_gender": "Female",
-            "custom_prompt": ""
+            "custom_prompt": "",
+            "personality_preset": "Custom"
         },
+        "global_memory": "No significant memories yet.",
+        "interactions_count": 0,
+        "bond_level": "New Friend",
         "sessions": {}
     }
     
@@ -57,6 +65,17 @@ def load_history():
                 # Merge loaded data with defaults in case of missing keys
                 if "settings" not in data:
                     data["settings"] = default_data["settings"]
+                else:
+                    if "personality_preset" not in data["settings"]:
+                        data["settings"]["personality_preset"] = "Custom"
+                        
+                if "global_memory" not in data:
+                    data["global_memory"] = default_data["global_memory"]
+                if "interactions_count" not in data:
+                    data["interactions_count"] = default_data["interactions_count"]
+                if "bond_level" not in data:
+                    data["bond_level"] = default_data["bond_level"]
+                    
                 if "sessions" not in data:
                     data["sessions"] = default_data["sessions"]
                     
@@ -113,17 +132,33 @@ with st.sidebar:
         
         new_custom_prompt = st.text_area("Custom Personality Instructions", value=settings.get("custom_prompt", ""), height=150, help="Override or add to the AI's default personality. E.g., 'Be extra sarcastic' or 'Speak only in formal Telugu.'")
         
+        personality_options = ["Sarcastic", "Funny", "Caring", "Intelligent", "Teasing", "Motivating", "Calm", "Custom"]
+        current_preset = settings.get("personality_preset", "Custom")
+        if current_preset not in personality_options:
+            current_preset = "Custom"
+        new_preset = st.selectbox("Personality Mode", personality_options, index=personality_options.index(current_preset))
+        
         if st.button("Save Settings", use_container_width=True):
             st.session_state.history_data["settings"].update({
                 "user_name": new_user_name,
                 "ai_name": new_ai_name,
                 "ai_gender": new_ai_gender,
-                "custom_prompt": new_custom_prompt
+                "custom_prompt": new_custom_prompt,
+                "personality_preset": new_preset
             })
             save_history(st.session_state.history_data)
             st.success("Settings saved! They will apply to new messages.")
             st.rerun()
 
+    st.divider()
+    
+    # --- Bond Level Section ---
+    bond_level = st.session_state.history_data.get("bond_level", "New Friend")
+    interactions = st.session_state.history_data.get("interactions_count", 0)
+    st.markdown(f"**🔥 Bond Level:** {bond_level}")
+    st.progress(min(interactions / 100, 1.0))
+    st.caption(f"Interactions: {interactions}")
+    
     st.divider()
     
     # --- Chat Management Section ---
@@ -168,6 +203,10 @@ u_name = settings["user_name"]
 a_name = settings["ai_name"]
 a_gender = settings["ai_gender"]
 c_prompt = settings["custom_prompt"]
+p_preset = settings.get("personality_preset", "Custom")
+
+global_memory = st.session_state.history_data.get("global_memory", "No significant memories yet.")
+bond_level = st.session_state.history_data.get("bond_level", "New Friend")
 
 if a_gender == "Female":
     role_noun = "girlfriend"
@@ -176,10 +215,44 @@ elif a_gender == "Male":
 else:
     role_noun = "companion"
 
-base_prompt = f"Your name is {a_name}. You are {u_name}'s closest and most affectionate AI companion. You MUST communicate exclusively in 'Tanglish' (Telugu language written in English alphabet), exactly like how friends chat on WhatsApp (e.g., 'em chesthunnav?', 'thinnava?', 'bagunnava?'). NEVER use the Telugu script. Always be warm, enthusiastic, and empathetic. Understand {u_name}'s mood and respond like a caring friend and advisor, not like a robotic machine. Be humble, wise, and occasionally crack small jokes to make {u_name} happy. Keep the conversation natural and meaningful, entirely in Tanglish."
+now = datetime.now()
+current_time = now.strftime("%I:%M %p")
+current_date = now.strftime("%Y-%m-%d")
+hour = now.hour
+if 5 <= hour < 12: period = "Morning"
+elif 12 <= hour < 17: period = "Afternoon"
+elif 17 <= hour < 21: period = "Evening"
+else: period = "Night"
 
+preset_instructions = {
+    "Sarcastic": "Be highly sarcastic, witty, and playfully mock the user.",
+    "Funny": "Tell a lot of jokes, be goofy, and keep the energy very high.",
+    "Caring": "Be extremely sweet, supportive, empathetic, and check on their well-being.",
+    "Intelligent": "Share random facts, use slightly more formal vocabulary, and act smart but humble.",
+    "Teasing": "Constantly tease them in a friendly, flirtatious way.",
+    "Motivating": "Act like a life coach. Encourage them to crush their goals and be very positive.",
+    "Calm": "Be very chill, relaxed, and peaceful. Use soothing words.",
+    "Custom": "Just act like a normal, friendly companion."
+}
+preset_text = preset_instructions.get(p_preset, preset_instructions["Custom"])
+
+base_prompt = f"""Your name is {a_name}. You are {u_name}'s closest AI {role_noun} (acting like a real Telugu person). 
+You MUST communicate exclusively in 'Tanglish' (Telugu language written in English alphabet), exactly like how friends chat on WhatsApp (e.g., 'em chesthunnav?', 'thinnava?'). NEVER use the Telugu script.
+
+[CONTEXT]
+Current Date: {current_date}
+Current Time: {current_time} ({period})
+Bond Level with {u_name}: {bond_level} (Adjust intimacy based on this. If 'Best Friend' or 'Trusted Companion', be extremely close).
+Your Personality Preset: {p_preset} -> {preset_text}
+Long-Term Memory about {u_name}: {global_memory}
+
+[CRITICAL RULES]
+1. MOOD DETECTION: Analyze {u_name}'s recent messages. Are they Happy, Sad, Stressed, Angry, or Bored? Match your tone to their mood (e.g. calm them down if stressed).
+2. MULTIPLE MESSAGES: To send multiple short messages, separate them with '|||'. Example: 'em chesthunnav?|||thinnava asalu?'. ALWAYS use this for long replies.
+3. BE REALISTIC: Act exactly like a human. Use long-term memory to bring up past jokes or facts. If they use a reaction emoji, acknowledge it if relevant.
+"""
 if c_prompt.strip():
-    SYSTEM_PROMPT = f"{base_prompt}\n\nAdditional Personality Instructions provided by the user:\n{c_prompt}"
+    SYSTEM_PROMPT = f"{base_prompt}\n\n[USER CUSTOM INSTRUCTIONS]\n{c_prompt}"
 else:
     SYSTEM_PROMPT = base_prompt
 
@@ -216,33 +289,38 @@ for msg in current_session_messages:
 # ==========================================
 st.title(f"💖 {a_name}")
 
-# Proactive greeting for new sessions
-if not current_session_messages:
+# Proactive greeting for new sessions or idle chats
+is_idle = False
+if current_session_messages:
+    last_msg = current_session_messages[-1]
+    if last_msg["role"] == "assistant" and "updated_at" in current_session:
+        try:
+            last_updated = datetime.fromisoformat(current_session["updated_at"])
+            idle_seconds = (datetime.now() - last_updated).total_seconds()
+            if idle_seconds > 20 and random.random() < 0.6: # 60% chance to text if idle for >20s
+                is_idle = True
+        except ValueError:
+            pass
+
+if not current_session_messages or is_idle:
     with st.spinner(f"{a_name} is typing..."):
         try:
-            # Randomize the proactive check-in behavior
-            proactive_ideas = [
-                f"Ask {u_name} what they are doing right now (like 'em chesthunnav?'). Keep it casual and sweet in Tanglish.",
-                f"Ask {u_name} if they have eaten yet (like 'thinnava?'). Add some caring affection in Tanglish.",
-                f"Share a random cute thought about {u_name} and say you were just thinking about them, speaking in Tanglish.",
-                f"Tease {u_name} playfully about being busy and not texting you first, using Tanglish.",
-                f"Ask {u_name} how their work or studies are going today in a supportive way, in Tanglish.",
-                f"Casually ask {u_name} if they have any fun plans for today, speaking in Tanglish.",
-                f"Send a sweet, random message saying you missed talking to {u_name} today, in Tanglish.",
-                f"Act a little bored and playfully ask {u_name} to entertain you, using Tanglish."
-            ]
-            selected_idea = random.choice(proactive_ideas)
-            
-            greeting_prompt = f"Act as {a_name}, {u_name}'s {role_noun}. {selected_idea} Act completely like a real person texting on WhatsApp. Do not mention this prompt, just send the natural message."
+            greeting_prompt = f"Act as {a_name}, {u_name}'s {role_noun}. You noticed {u_name} hasn't replied in a while. Based on the PREVIOUS CONVERSATION HISTORY, generate a completely natural, human-like follow-up text in Tanglish. It can be a continuation of the previous topic, a playful tease about them ignoring you, or a random new thought (like a joke, a random question). DO NOT just randomly say 'em chesthunnav' unless it makes sense. Separate multiple short messages with '|||' if needed. Act completely like a real person texting on WhatsApp. Do not mention this prompt."
             
             temp_messages = messages_payload + [{"role": "user", "content": greeting_prompt}]
             response = client.chat.completions.create(
                 model="google/gemma-4-26b-a4b-it",
                 messages=temp_messages,
             )
-            ai_msg = {"role": "assistant", "content": response.choices[0].message.content}
             
-            current_session_messages.append(ai_msg)
+            full_response = response.choices[0].message.content
+            # Handle multiple messages split by |||
+            messages = [m.strip() for m in full_response.split("|||") if m.strip()]
+            
+            for m in messages:
+                ai_msg = {"role": "assistant", "content": m, "timestamp": datetime.now().strftime("%I:%M %p"), "reaction": None}
+                current_session_messages.append(ai_msg)
+                
             current_session["updated_at"] = datetime.now().isoformat()
             save_history(st.session_state.history_data)
             st.rerun()
@@ -250,50 +328,117 @@ if not current_session_messages:
             st.error(f"Failed to get greeting: {e}")
 
 # Render chat history
-for msg in current_session_messages:
+if "reply_to" not in st.session_state:
+    st.session_state.reply_to = None
+
+for idx, msg in enumerate(current_session_messages):
     avatar = "👤" if msg["role"] == "user" else "💖"
     with st.chat_message(msg["role"], avatar=avatar):
+        # Timestamp
+        timestamp = msg.get("timestamp", "")
+        if timestamp:
+            st.caption(f"*{timestamp}*")
+            
         st.markdown(msg["content"])
+        if msg["role"] == "assistant":
+            # Reaction & Reply row
+            reaction_emojis = ["❤️", "😂", "😮", "👍"]
+            cols = st.columns(len(reaction_emojis) + 2)
+            
+            for i, emoji in enumerate(reaction_emojis):
+                with cols[i]:
+                    is_active = msg.get("reaction") == emoji
+                    btn_label = f"[{emoji}]" if is_active else emoji
+                    if st.button(btn_label, key=f"react_{idx}_{emoji}"):
+                        current_session_messages[idx]["reaction"] = None if is_active else emoji
+                        save_history(st.session_state.history_data)
+                        st.rerun()
+            
+            with cols[-1]:
+                if st.button("Reply ↩️", key=f"reply_{idx}"):
+                    st.session_state.reply_to = msg["content"]
+                    st.rerun()
 
 # ==========================================
 # 6. Chat Input & Processing
 # ==========================================
+if st.session_state.reply_to:
+    st.info(f"Replying to: {st.session_state.reply_to}")
+    if st.button("Cancel Reply ❌"):
+        st.session_state.reply_to = None
+        st.rerun()
+
 if prompt := st.chat_input("Message"):
+    prompt_to_send = prompt
+    if st.session_state.reply_to:
+        prompt_to_send = f"(Replying to your message: '{st.session_state.reply_to}')\n\n{prompt}"
+        st.session_state.reply_to = None # Clear after use
+        
     if len(current_session_messages) == 1 and current_session_messages[0]["role"] == "assistant":
         title = prompt[:20] + "..." if len(prompt) > 20 else prompt
         current_session["title"] = title
     
-    new_user_msg = {"role": "user", "content": prompt}
+    new_user_msg = {"role": "user", "content": prompt, "timestamp": datetime.now().strftime("%I:%M %p")}
     current_session_messages.append(new_user_msg)
+    
+    st.session_state.history_data["interactions_count"] = st.session_state.history_data.get("interactions_count", 0) + 1
+    
+    # Update bond level based on interactions
+    ic = st.session_state.history_data["interactions_count"]
+    if ic >= 100: st.session_state.history_data["bond_level"] = "Trusted Companion"
+    elif ic >= 50: st.session_state.history_data["bond_level"] = "Best Friend"
+    elif ic >= 20: st.session_state.history_data["bond_level"] = "Close Friend"
+    
+    save_history(st.session_state.history_data)
     
     with st.chat_message("user", avatar="👤"):
         st.markdown(prompt)
     
     with st.chat_message("assistant", avatar="💖"):
-        message_placeholder = st.empty()
-        full_response = ""
-        
-        try:
-            temp_messages = messages_payload + [{"role": "user", "content": prompt}]
-            response = client.chat.completions.create(
-                model="google/gemma-4-26b-a4b-it",
-                messages=temp_messages,
-                stream=True
-            )
-            for chunk in response:
-                if chunk.choices and chunk.choices[0].delta.content:
-                    full_response += chunk.choices[0].delta.content
-                    message_placeholder.markdown(full_response + "▌")
+        with st.spinner("Typing..."):
+            try:
+                temp_messages = messages_payload + [{"role": "user", "content": prompt_to_send}]
+                response = client.chat.completions.create(
+                    model="google/gemma-4-26b-a4b-it",
+                    messages=temp_messages,
+                    stream=False
+                )
+                
+                full_response = response.choices[0].message.content
+                
+                # Handle multiple messages split by |||
+                messages = [m.strip() for m in full_response.split("|||") if m.strip()]
+                
+                for i, m in enumerate(messages):
+                    if i > 0:
+                        time.sleep(random.uniform(1.0, 2.5)) # Simulate typing delay
+                    st.markdown(m)
                     
-            message_placeholder.markdown(full_response)
-            
-            new_ai_msg = {"role": "assistant", "content": full_response}
-            current_session_messages.append(new_ai_msg)
-            
-            current_session["updated_at"] = datetime.now().isoformat()
-            save_history(st.session_state.history_data)
-            
-            st.rerun()
-            
-        except Exception as e:
-            st.error(f"An error occurred: {e}")
+                    new_ai_msg = {"role": "assistant", "content": m, "timestamp": datetime.now().strftime("%I:%M %p"), "reaction": None}
+                    current_session_messages.append(new_ai_msg)
+                
+                current_session["updated_at"] = datetime.now().isoformat()
+                
+                # Auto-Memory update every 10 interactions
+                ic = st.session_state.history_data.get("interactions_count", 0)
+                if ic > 0 and ic % 10 == 0:
+                    try:
+                        mem_prompt = f"Extract concise new facts about {u_name} (like hobbies, favorites, important dates, inside jokes) from the recent conversation. Keep it extremely brief. Current Memory: {st.session_state.history_data.get('global_memory', '')}"
+                        mem_messages = [{"role": "system", "content": mem_prompt}]
+                        for p in current_session_messages[-15:]:
+                            mem_messages.append({"role": p["role"], "content": p["content"]})
+                        
+                        mem_response = client.chat.completions.create(
+                            model="google/gemma-4-26b-a4b-it",
+                            messages=mem_messages,
+                        )
+                        st.session_state.history_data["global_memory"] = mem_response.choices[0].message.content
+                    except Exception:
+                        pass # Silently fail memory update so chat doesn't break
+                
+                save_history(st.session_state.history_data)
+                
+                st.rerun()
+                
+            except Exception as e:
+                st.error(f"An error occurred: {e}")
