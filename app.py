@@ -226,7 +226,10 @@ if not current_session_messages:
                 f"Ask {u_name} if they have eaten yet (like 'thinnava?'). Add some caring affection in Tanglish.",
                 f"Share a random cute thought about {u_name} and say you were just thinking about them, speaking in Tanglish.",
                 f"Tease {u_name} playfully about being busy and not texting you first, using Tanglish.",
-                f"Ask {u_name} how their work or studies are going today in a supportive way, in Tanglish."
+                f"Ask {u_name} how their work or studies are going today in a supportive way, in Tanglish.",
+                f"Casually ask {u_name} if they have any fun plans for today, speaking in Tanglish.",
+                f"Send a sweet, random message saying you missed talking to {u_name} today, in Tanglish.",
+                f"Act a little bored and playfully ask {u_name} to entertain you, using Tanglish."
             ]
             selected_idea = random.choice(proactive_ideas)
             
