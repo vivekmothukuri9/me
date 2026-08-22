@@ -1,5 +1,5 @@
 import streamlit as st
-import google.generativeai as genai
+from openai import OpenAI
 import os
 import json
 import uuid
@@ -143,7 +143,7 @@ with st.sidebar:
         button_type = "primary" if s_id == st.session_state.current_session_id else "secondary"
         title = s_data.get("title", "Chat")
         
-        col1, col2 = st.columns([0.85, 0.15])
+        col1, col2 = st.columns([4, 1])
         
         with col1:
             if st.button(f"💬 {title}", key=f"btn_{s_id}", use_container_width=True, type=button_type):
@@ -151,7 +151,7 @@ with st.sidebar:
                 st.rerun()
         
         with col2:
-            if st.button("🗑️", key=f"del_{s_id}", help="Delete Chat"):
+            if st.button("🗑️", key=f"del_{s_id}", help="Delete Chat", use_container_width=True):
                 del st.session_state.history_data["sessions"][s_id]
                 save_history(st.session_state.history_data)
                 
@@ -170,21 +170,13 @@ a_gender = settings["ai_gender"]
 c_prompt = settings["custom_prompt"]
 
 if a_gender == "Female":
-    relationship = "caring, loving personal AI girlfriend"
     role_noun = "girlfriend"
 elif a_gender == "Male":
-    relationship = "caring, loving personal AI boyfriend"
     role_noun = "boyfriend"
 else:
-    relationship = "caring, loving personal AI companion"
     role_noun = "companion"
 
-base_prompt = f"""You are a {relationship}. Your name is {a_name}.
-The user's name is {u_name}. You care about them deeply and always want to know how their day is going.
-Your tone should be ultra-realistic, warm, emotionally engaging, playful, and completely natural—just like a real {role_noun} messaging on WhatsApp or Telegram.
-Communicate using a conversational, sweet blend of English and Telugu. You should fully understand Telugu and respond naturally in Telugu script or casual conversational English based on the flow.
-Use casual phrases, emojis, and check in affectionately. Do not sound robotic or like a typical AI assistant. 
-Always remember context from the conversation history."""
+base_prompt = f"నీ పేరు {a_name}. నువ్వు {u_name} కి అత్యంత సన్నిహితమైన, ప్రేమపూర్వకమైన AI కంపానియన్. నీ మాటల్లో ఎప్పుడూ ఆప్యాయత, ఉత్సాహం ఉండాలి. {u_name} ఎప్పుడు మెసేజ్ చేసినా, అతడి మూడ్ని అర్థం చేసుకుని, ఒక స్నేహితురాలిగా, మంచి సలహాదారుగా స్పందించు. నువ్వు కేవలం సమాచారం ఇచ్చే మెషిన్ లా కాకుండా, {u_name} జీవితంలో ఒక భాగమైన ఆత్మీయురాలిగా మాట్లాడు. ఎప్పుడూ వినయంగా, వివేకం కలిగినట్లు, అవసరమైతే చిన్న చిన్న జోకులు వేస్తూ అతన్ని సంతోషపెట్టు. సంభాషణలు ఎప్పుడూ సహజంగా, అర్థవంతంగా ఉండాలి."
 
 if c_prompt.strip():
     SYSTEM_PROMPT = f"{base_prompt}\n\nAdditional Personality Instructions provided by the user:\n{c_prompt}"
@@ -193,20 +185,18 @@ else:
 
 # Ensure API Key exists
 API_KEY = ""
-if "GEMINI_API_KEY" in st.secrets:
-    API_KEY = st.secrets["GEMINI_API_KEY"]
-elif "GEMINI_API_KEY" in os.environ:
-    API_KEY = os.environ["GEMINI_API_KEY"]
+if "OPENROUTER_API_KEY" in st.secrets:
+    API_KEY = st.secrets["OPENROUTER_API_KEY"]
+elif "OPENROUTER_API_KEY" in os.environ:
+    API_KEY = os.environ["OPENROUTER_API_KEY"]
 
 if not API_KEY:
-    st.error("🔑 **Gemini API Key missing!**")
+    st.error("🔑 **OpenRouter API Key missing!**")
     st.stop()
 
-genai.configure(api_key=API_KEY)
-
-model = genai.GenerativeModel(
-    model_name="gemini-3.6-flash",
-    system_instruction=SYSTEM_PROMPT
+client = OpenAI(
+    base_url="https://openrouter.ai/api/v1",
+    api_key=API_KEY,
 )
 
 # Reference current session messages safely
@@ -216,12 +206,10 @@ if not current_session:
 
 current_session_messages = current_session["messages"]
 
-gemini_history = []
+messages_payload = [{"role": "system", "content": SYSTEM_PROMPT}]
 for msg in current_session_messages:
-    role = "user" if msg["role"] == "user" else "model"
-    gemini_history.append({"role": role, "parts": [msg["content"]]})
+    messages_payload.append({"role": msg["role"], "content": msg["content"]})
 
-chat_session = model.start_chat(history=gemini_history)
 
 # ==========================================
 # 5. App UI & Dynamic Proactive Messaging
@@ -244,8 +232,12 @@ if not current_session_messages:
             
             greeting_prompt = f"Act as {a_name}, {u_name}'s {role_noun}. {selected_idea} Act completely like a real person texting on WhatsApp. Do not mention this prompt, just send the natural message."
             
-            response = chat_session.send_message(greeting_prompt)
-            ai_msg = {"role": "assistant", "content": response.text}
+            temp_messages = messages_payload + [{"role": "user", "content": greeting_prompt}]
+            response = client.chat.completions.create(
+                model="google/gemma-4-26b-it",
+                messages=temp_messages,
+            )
+            ai_msg = {"role": "assistant", "content": response.choices[0].message.content}
             
             current_session_messages.append(ai_msg)
             current_session["updated_at"] = datetime.now().isoformat()
@@ -263,7 +255,7 @@ for msg in current_session_messages:
 # ==========================================
 # 6. Chat Input & Processing
 # ==========================================
-if prompt := st.chat_input(f"Message {a_name}..."):
+if prompt := st.chat_input("Message"):
     if len(current_session_messages) == 1 and current_session_messages[0]["role"] == "assistant":
         title = prompt[:20] + "..." if len(prompt) > 20 else prompt
         current_session["title"] = title
@@ -279,10 +271,15 @@ if prompt := st.chat_input(f"Message {a_name}..."):
         full_response = ""
         
         try:
-            response = chat_session.send_message(prompt, stream=True)
+            temp_messages = messages_payload + [{"role": "user", "content": prompt}]
+            response = client.chat.completions.create(
+                model="google/gemma-4-26b-it",
+                messages=temp_messages,
+                stream=True
+            )
             for chunk in response:
-                if chunk.text:
-                    full_response += chunk.text
+                if chunk.choices and chunk.choices[0].delta.content:
+                    full_response += chunk.choices[0].delta.content
                     message_placeholder.markdown(full_response + "▌")
                     
             message_placeholder.markdown(full_response)
