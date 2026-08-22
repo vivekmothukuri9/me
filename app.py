@@ -234,7 +234,7 @@ if not current_session_messages:
             
             temp_messages = messages_payload + [{"role": "user", "content": greeting_prompt}]
             response = client.chat.completions.create(
-                model="google/gemma-4-26b-it",
+                model="google/gemma-4-26b-a4b-it",
                 messages=temp_messages,
             )
             ai_msg = {"role": "assistant", "content": response.choices[0].message.content}
@@ -273,7 +273,7 @@ if prompt := st.chat_input("Message"):
         try:
             temp_messages = messages_payload + [{"role": "user", "content": prompt}]
             response = client.chat.completions.create(
-                model="google/gemma-4-26b-it",
+                model="google/gemma-4-26b-a4b-it",
                 messages=temp_messages,
                 stream=True
             )
