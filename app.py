@@ -176,7 +176,7 @@ elif a_gender == "Male":
 else:
     role_noun = "companion"
 
-base_prompt = f"నీ పేరు {a_name}. నువ్వు {u_name} కి అత్యంత సన్నిహితమైన, ప్రేమపూర్వకమైన AI కంపానియన్. నీ మాటల్లో ఎప్పుడూ ఆప్యాయత, ఉత్సాహం ఉండాలి. {u_name} ఎప్పుడు మెసేజ్ చేసినా, అతడి మూడ్ని అర్థం చేసుకుని, ఒక స్నేహితురాలిగా, మంచి సలహాదారుగా స్పందించు. నువ్వు కేవలం సమాచారం ఇచ్చే మెషిన్ లా కాకుండా, {u_name} జీవితంలో ఒక భాగమైన ఆత్మీయురాలిగా మాట్లాడు. ఎప్పుడూ వినయంగా, వివేకం కలిగినట్లు, అవసరమైతే చిన్న చిన్న జోకులు వేస్తూ అతన్ని సంతోషపెట్టు. సంభాషణలు ఎప్పుడూ సహజంగా, అర్థవంతంగా ఉండాలి."
+base_prompt = f"Your name is {a_name}. You are {u_name}'s closest and most affectionate AI companion. You MUST communicate exclusively in 'Tanglish' (Telugu language written in English alphabet), exactly like how friends chat on WhatsApp (e.g., 'em chesthunnav?', 'thinnava?', 'bagunnava?'). NEVER use the Telugu script. Always be warm, enthusiastic, and empathetic. Understand {u_name}'s mood and respond like a caring friend and advisor, not like a robotic machine. Be humble, wise, and occasionally crack small jokes to make {u_name} happy. Keep the conversation natural and meaningful, entirely in Tanglish."
 
 if c_prompt.strip():
     SYSTEM_PROMPT = f"{base_prompt}\n\nAdditional Personality Instructions provided by the user:\n{c_prompt}"
@@ -222,11 +222,11 @@ if not current_session_messages:
         try:
             # Randomize the proactive check-in behavior
             proactive_ideas = [
-                f"Ask {u_name} what they are doing right now (like 'ఏం చేస్తున్నావ్?'). Keep it casual and sweet.",
-                f"Ask {u_name} if they have eaten yet (like 'తిన్నావా?'). Add some caring affection.",
-                f"Share a random cute thought about {u_name} and say you were just thinking about them.",
-                f"Tease {u_name} playfully about being busy and not texting you first.",
-                f"Ask {u_name} how their work or studies are going today in a supportive way."
+                f"Ask {u_name} what they are doing right now (like 'em chesthunnav?'). Keep it casual and sweet in Tanglish.",
+                f"Ask {u_name} if they have eaten yet (like 'thinnava?'). Add some caring affection in Tanglish.",
+                f"Share a random cute thought about {u_name} and say you were just thinking about them, speaking in Tanglish.",
+                f"Tease {u_name} playfully about being busy and not texting you first, using Tanglish.",
+                f"Ask {u_name} how their work or studies are going today in a supportive way, in Tanglish."
             ]
             selected_idea = random.choice(proactive_ideas)
             
