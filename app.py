@@ -568,7 +568,7 @@ if current_session["pending_ai_messages"]:
         if "last_user_message_time" in current_session:
             try:
                 last_active = datetime.fromisoformat(current_session["last_user_message_time"])
-                if (get_ist_now() - last_active).total_seconds() < 120:
+                if (get_ist_now() - last_active).total_seconds() < 60:
                     send_notif = False
             except ValueError:
                 pass
