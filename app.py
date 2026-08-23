@@ -7,6 +7,22 @@ import random
 import time
 from datetime import datetime, timedelta, timezone
 from streamlit_autorefresh import st_autorefresh
+import streamlit.components.v1 as components
+import urllib.request
+import urllib.parse
+
+def send_telegram_notification(message_text, bot_name="AI"):
+    bot_token = st.secrets.get("TELEGRAM_BOT_TOKEN")
+    chat_id = st.secrets.get("TELEGRAM_CHAT_ID")
+    if not bot_token or not chat_id:
+        return
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    data = urllib.parse.urlencode({'chat_id': chat_id, 'text': f"💖 {bot_name}:\n\n{message_text}"}).encode('utf-8')
+    try:
+        req = urllib.request.Request(url, data=data)
+        urllib.request.urlopen(req)
+    except Exception as e:
+        print("Telegram error:", e)
 
 def get_ist_now():
     return datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=5, minutes=30)
@@ -521,6 +537,7 @@ if prompt:
     new_user_msg = {"role": "user", "content": prompt, "timestamp": get_ist_now().strftime("%I:%M %p")}
     current_session_messages.append(new_user_msg)
     
+    current_session["last_user_message_time"] = get_ist_now().isoformat()
     st.session_state.history_data["interactions_count"] = st.session_state.history_data.get("interactions_count", 0) + 1
     
     # 15% chance to become busy, ONLY if she is not already busy and not currently typing a queued message
@@ -545,6 +562,19 @@ if current_session["pending_ai_messages"]:
         next_msg = current_session["pending_ai_messages"].pop(0)
         new_ai_msg = {"role": "assistant", "content": next_msg, "timestamp": get_ist_now().strftime("%I:%M %p")}
         current_session_messages.append(new_ai_msg)
+        
+        # Send Telegram notification conditionally
+        send_notif = True
+        if "last_user_message_time" in current_session:
+            try:
+                last_active = datetime.fromisoformat(current_session["last_user_message_time"])
+                if (get_ist_now() - last_active).total_seconds() < 120:
+                    send_notif = False
+            except ValueError:
+                pass
+                
+        if send_notif:
+            send_telegram_notification(next_msg, a_name)
         
         current_session["updated_at"] = get_ist_now().isoformat()
         save_history(st.session_state.history_data)
@@ -631,4 +661,85 @@ else:
                 st.rerun()
             except Exception as e:
                 st.error(f"Failed to get greeting: {e}")
+
+# ==========================================
+# 8. Swipe-to-Reply JS Injection
+# ==========================================
+components.html("""
+<script>
+const parentDoc = window.parent.document;
+if (!parentDoc.getElementById("swipe-reply-injected")) {
+    const marker = parentDoc.createElement("div");
+    marker.id = "swipe-reply-injected";
+    parentDoc.body.appendChild(marker);
+    
+    let startX = 0;
+    let currentX = 0;
+    let swipedElement = null;
+    let isDragging = false;
+    
+    const onTouchStart = (e) => {
+        const bubble = e.target.closest('.msg-bubble');
+        if (!bubble) return;
+        
+        // Don't drag if they are selecting text
+        if (parentDoc.getSelection().toString().length > 0) return;
+        
+        swipedElement = bubble;
+        startX = e.type.includes('mouse') ? e.pageX : e.touches[0].clientX;
+        isDragging = true;
+        bubble.style.transition = 'none';
+    };
+    
+    const onTouchMove = (e) => {
+        if (!isDragging || !swipedElement) return;
+        const x = e.type.includes('mouse') ? e.pageX : e.touches[0].clientX;
+        currentX = x - startX;
+        
+        if (currentX > 0 && currentX < 80) {
+            swipedElement.style.transform = `translateX(${currentX}px)`;
+        } else if (currentX < 0 && currentX > -80) {
+            swipedElement.style.transform = `translateX(${currentX}px)`;
+        }
+    };
+    
+    const onTouchEnd = (e) => {
+        if (!isDragging || !swipedElement) return;
+        
+        if (Math.abs(currentX) > 40) {
+            // Trigger Reply
+            const clone = swipedElement.cloneNode(true);
+            const ts = clone.querySelector('.timestamp-container');
+            if(ts) ts.remove();
+            let textToQuote = clone.innerText.trim();
+            if (textToQuote.length > 80) textToQuote = textToQuote.substring(0, 80) + '...';
+            
+            const chatInput = parentDoc.querySelector('[data-testid="stChatInput"] textarea');
+            if (chatInput) {
+                const nativeInputValueSetter = Object.getOwnPropertyDescriptor(parentDoc.defaultView.HTMLTextAreaElement.prototype, "value").set;
+                nativeInputValueSetter.call(chatInput, `> ${textToQuote}\\n\\n`);
+                const ev = new Event('input', { bubbles: true});
+                chatInput.dispatchEvent(ev);
+                chatInput.focus();
+            }
+        }
+        
+        swipedElement.style.transition = 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+        swipedElement.style.transform = 'translateX(0)';
+        isDragging = false;
+        swipedElement = null;
+        currentX = 0;
+    };
+    
+    parentDoc.addEventListener('touchstart', onTouchStart);
+    parentDoc.addEventListener('touchmove', onTouchMove);
+    parentDoc.addEventListener('touchend', onTouchEnd);
+    
+    parentDoc.addEventListener('mousedown', onTouchStart);
+    parentDoc.addEventListener('mousemove', onTouchMove);
+    parentDoc.addEventListener('mouseup', onTouchEnd);
+}
+</script>
+""", height=0, width=0)
+
 
