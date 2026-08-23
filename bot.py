@@ -125,8 +125,26 @@ def get_telegram_updates(offset=None):
         print("Error fetching updates:", e)
         return []
 
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+class DummyHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(b"Bot is running 24/7")
+
+def run_dummy_server():
+    port = int(os.environ.get('PORT', 10000))
+    server = HTTPServer(('0.0.0.0', port), DummyHandler)
+    server.serve_forever()
+
 def main_loop():
     print("Background Bot is starting with Supabase integration...")
+    # Start dummy web server in a background thread for Render
+    threading.Thread(target=run_dummy_server, daemon=True).start()
+    
     last_update_id = None
     
     state = get_app_state()
