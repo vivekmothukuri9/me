@@ -10,6 +10,18 @@ from streamlit_autorefresh import st_autorefresh
 import streamlit.components.v1 as components
 import urllib.request
 import urllib.parse
+from supabase import create_client, Client
+
+# ==========================================
+# 0. Supabase Setup
+# ==========================================
+try:
+    url = st.secrets.get("SUPABASE_URL")
+    key = st.secrets.get("SUPABASE_KEY")
+    supabase = create_client(url, key)
+except Exception as e:
+    st.error("Failed to initialize Supabase. Check secrets.toml.")
+    st.stop()
 
 def send_telegram_notification(message_text, bot_name="AI"):
     bot_token = st.secrets.get("TELEGRAM_BOT_TOKEN")
@@ -45,13 +57,11 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-HISTORY_FILE = "chat_history.json"
-
 # ==========================================
 # 2. State & History Management
 # ==========================================
 def load_history():
-    """Loads history and settings from JSON."""
+    """Loads history and settings from Supabase."""
     default_data = {
         "settings": {
             "user_name": "Vivek",
@@ -66,46 +76,49 @@ def load_history():
         "sessions": {}
     }
     
-    if os.path.exists(HISTORY_FILE):
-        try:
-            with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                
-                # Handle legacy flat list format migration
-                if isinstance(data, list):
-                    legacy_session_id = str(uuid.uuid4())
-                    default_data["sessions"][legacy_session_id] = {
-                        "title": "Legacy Chat",
-                        "updated_at": get_ist_now().isoformat(),
-                        "messages": data
-                    }
-                    return default_data
-                
-                # Merge loaded data with defaults in case of missing keys
-                if "settings" not in data:
-                    data["settings"] = default_data["settings"]
-                else:
-                    if "personality_preset" not in data["settings"]:
-                        data["settings"]["personality_preset"] = "Custom"
-                        
-                if "global_memory" not in data:
-                    data["global_memory"] = default_data["global_memory"]
-                if "interactions_count" not in data:
-                    data["interactions_count"] = default_data["interactions_count"]
-                if "bond_level" not in data:
-                    data["bond_level"] = default_data["bond_level"]
+    try:
+        response = supabase.table("app_state").select("data").eq("id", "singleton").execute()
+        if response.data and len(response.data) > 0:
+            data = response.data[0]["data"]
+            
+            # Handle legacy flat list format migration
+            if isinstance(data, list):
+                legacy_session_id = str(uuid.uuid4())
+                default_data["sessions"][legacy_session_id] = {
+                    "title": "Legacy Chat",
+                    "updated_at": get_ist_now().isoformat(),
+                    "messages": data
+                }
+                return default_data
+            
+            # Merge loaded data with defaults in case of missing keys
+            if "settings" not in data:
+                data["settings"] = default_data["settings"]
+            else:
+                if "personality_preset" not in data["settings"]:
+                    data["settings"]["personality_preset"] = "Custom"
                     
-                if "sessions" not in data:
-                    data["sessions"] = default_data["sessions"]
-                    
-                return data
-        except Exception:
-            return default_data
+            if "global_memory" not in data:
+                data["global_memory"] = default_data["global_memory"]
+            if "interactions_count" not in data:
+                data["interactions_count"] = default_data["interactions_count"]
+            if "bond_level" not in data:
+                data["bond_level"] = default_data["bond_level"]
+                
+            if "sessions" not in data:
+                data["sessions"] = default_data["sessions"]
+                
+            return data
+    except Exception as e:
+        print("Error loading from Supabase:", e)
+        
     return default_data
 
 def save_history(history_data):
-    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(history_data, f, indent=4)
+    try:
+        supabase.table("app_state").upsert({"id": "singleton", "data": history_data}).execute()
+    except Exception as e:
+        print("Error saving to Supabase:", e)
 
 if "history_data" not in st.session_state:
     st.session_state.history_data = load_history()
