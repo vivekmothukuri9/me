@@ -583,7 +583,7 @@ if prompt:
     st.session_state.history_data["interactions_count"] = st.session_state.history_data.get("interactions_count", 0) + 1
     
     # 15% chance to become busy, ONLY if she is not already busy and not currently typing a queued message
-    if not current_session["pending_ai_messages"] and "busy_until" not in current_session:
+    if not current_session.get("pending_ai_messages") and "busy_until" not in current_session:
         if random.random() < 0.15:
             busy_minutes = random.uniform(1.0, 3.0)
             current_session["busy_until"] = (get_ist_now() + timedelta(minutes=busy_minutes)).isoformat()
@@ -597,20 +597,21 @@ if prompt:
 # ==========================================
 
 # RULE A: Process Pending Queue
-if current_session["pending_ai_messages"]:
+if current_session.get("pending_ai_messages"):
     with st.spinner(f"{a_name} is typing..."):
         time.sleep(random.uniform(1.5, 3.0)) # Simulate typing delay for each message
         
-        next_msg = current_session["pending_ai_messages"].pop(0)
-        new_ai_msg = {"role": "assistant", "content": next_msg, "timestamp": get_ist_now().strftime("%I:%M %p")}
-        current_session_messages.append(new_ai_msg)
-        
-        # Send Telegram notification unconditionally
-        send_telegram_notification(next_msg, a_name)
-        
-        current_session["updated_at"] = get_ist_now().isoformat()
-        save_history(st.session_state.history_data)
-        st.rerun()
+        if current_session.get("pending_ai_messages"):
+            next_msg = current_session["pending_ai_messages"].pop(0)
+            new_ai_msg = {"role": "assistant", "content": next_msg, "timestamp": get_ist_now().strftime("%I:%M %p")}
+            current_session_messages.append(new_ai_msg)
+            
+            # Send Telegram notification unconditionally
+            send_telegram_notification(next_msg, a_name)
+            
+            current_session["updated_at"] = get_ist_now().isoformat()
+            save_history(st.session_state.history_data)
+            st.rerun()
 
 # RULE B: Respond to User
 elif current_session_messages and current_session_messages[-1]["role"] == "user":
