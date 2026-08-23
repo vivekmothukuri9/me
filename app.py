@@ -686,7 +686,7 @@ else:
 # ==========================================
 # 8. Swipe-to-Reply JS Injection
 # ==========================================
-components.html(f"""
+js_code = """
 <script>
 const parentDoc = window.parent.document;
 if (!parentDoc.getElementById("swipe-reply-injected")) {
@@ -724,8 +724,8 @@ if (!parentDoc.getElementById("swipe-reply-injected")) {
         
         previewBox.innerHTML = `
             <div style="display: flex; flex-direction: column; overflow: hidden; max-width: 90%;">
-                <span style="color: #4CAF50; font-weight: 600; font-size: 13px; margin-bottom: 3px;">${{author}}</span>
-                <span style="color: #aaa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px;">${{text}}</span>
+                <span style="color: #4CAF50; font-weight: 600; font-size: 13px; margin-bottom: 3px;">${author}</span>
+                <span style="color: #aaa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px;">${text}</span>
             </div>
             <div id="close-reply-preview" style="cursor: pointer; padding: 5px; color: #aaa; font-size: 16px;">✕</div>
         `;
@@ -772,9 +772,9 @@ if (!parentDoc.getElementById("swipe-reply-injected")) {
         currentX = x - startX;
         
         if (currentX > 0 && currentX < 80) {
-            swipedElement.style.transform = `translateX(${{currentX}}px)`;
+            swipedElement.style.transform = `translateX(${currentX}px)`;
         } else if (currentX < 0 && currentX > -80) {
-            swipedElement.style.transform = `translateX(${{currentX}}px)`;
+            swipedElement.style.transform = `translateX(${currentX}px)`;
         }
     };
     
@@ -802,8 +802,8 @@ if (!parentDoc.getElementById("swipe-reply-injected")) {
         resetDrag();
     };
     
-    parentDoc.addEventListener('touchstart', onTouchStart, {{passive: false}});
-    parentDoc.addEventListener('touchmove', onTouchMove, {{passive: false}});
+    parentDoc.addEventListener('touchstart', onTouchStart, {passive: false});
+    parentDoc.addEventListener('touchmove', onTouchMove, {passive: false});
     parentDoc.addEventListener('touchend', onTouchEnd);
     
     parentDoc.addEventListener('mousedown', onTouchStart);
@@ -823,7 +823,7 @@ if (!parentDoc.getElementById("swipe-reply-injected")) {
                     const newVal = '> ' + replyContext + '\\n\\n' + val;
                     const nativeSetter = Object.getOwnPropertyDescriptor(parentDoc.defaultView.HTMLTextAreaElement.prototype, "value").set;
                     nativeSetter.call(chatInput, newVal);
-                    chatInput.dispatchEvent(new Event('input', {{ bubbles: true}}));
+                    chatInput.dispatchEvent(new Event('input', { bubbles: true}));
                 }
                 const previewBox = parentDoc.getElementById('custom-reply-preview');
                 if (previewBox) previewBox.style.display = 'none';
@@ -848,6 +848,7 @@ if (!parentDoc.getElementById("swipe-reply-injected")) {
     }
 }
 </script>
-""", height=0, width=0)
+"""
+components.html(js_code.replace("{a_name}", a_name), height=0, width=0)
 
 
