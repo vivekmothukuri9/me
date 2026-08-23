@@ -409,6 +409,14 @@ st.markdown("""
 .msg-row.ai { justify-content: flex-start; align-items: flex-end; }
 
 /* Message Bubbles */
+.msg-bubble, .msg-bubble * {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
 .msg-bubble {
     max-width: 75%; padding: 10px 14px 22px 14px; /* extra bottom padding for timestamp */
     font-family: "Inter", -apple-system, Roboto, sans-serif;
@@ -584,18 +592,8 @@ if current_session["pending_ai_messages"]:
         new_ai_msg = {"role": "assistant", "content": next_msg, "timestamp": get_ist_now().strftime("%I:%M %p")}
         current_session_messages.append(new_ai_msg)
         
-        # Send Telegram notification conditionally
-        send_notif = True
-        if "last_user_message_time" in current_session:
-            try:
-                last_active = datetime.fromisoformat(current_session["last_user_message_time"])
-                if (get_ist_now() - last_active).total_seconds() < 60:
-                    send_notif = False
-            except ValueError:
-                pass
-                
-        if send_notif:
-            send_telegram_notification(next_msg, a_name)
+        # Send Telegram notification unconditionally
+        send_telegram_notification(next_msg, a_name)
         
         current_session["updated_at"] = get_ist_now().isoformat()
         save_history(st.session_state.history_data)
@@ -613,7 +611,7 @@ elif current_session_messages and current_session_messages[-1]["role"] == "user"
                 is_busy = True
             else:
                 current_session.pop("busy_until", None)
-                special_prompt = f"Act as {a_name}. You were busy and couldn't reply to {u_name}'s last message immediately. Generate a natural reply in Tanglish, starting with a realistic excuse for being late (e.g. 'Sorry ra, mummy pilichindi', 'college lo unna', 'call lo unna', 'nidrosthundi'). Then reply to their last message."
+                special_prompt = f"Act as {a_name}. You were busy and couldn't reply to {u_name}'s last message immediately. Generate a natural reply in Tanglish, starting with a UNIQUE and realistic excuse for being late (e.g. 'college lo unna', 'call lo unna', 'nidrosthundi', 'baitikoccha'). DO NOT repeat the same excuse like 'mummy pilichindi'. Then reply to their last message."
         except ValueError:
             current_session.pop("busy_until", None)
 
@@ -688,56 +686,67 @@ else:
 # ==========================================
 js_code = """
 <script>
-const parentDoc = window.parent.document;
-if (!parentDoc.getElementById("swipe-reply-injected")) {
-    const marker = parentDoc.createElement("div");
-    marker.id = "swipe-reply-injected";
-    parentDoc.body.appendChild(marker);
+const parentWindow = window.parent;
+const parentDoc = parentWindow.document;
+
+if (!parentWindow.chatReplySystemInited) {
+    parentWindow.chatReplySystemInited = true;
+    parentWindow.replyContext = null;
+    parentWindow.replyAuthor = null;
     
     let startX = 0;
     let currentX = 0;
     let swipedElement = null;
     let isDragging = false;
-    let replyContext = null;
     
-    const showReplyPreview = (text, author) => {
-        let previewBox = parentDoc.getElementById('custom-reply-preview');
-        if (!previewBox) {
-            previewBox = parentDoc.createElement('div');
-            previewBox.id = 'custom-reply-preview';
-            
-            const chatInputContainer = parentDoc.querySelector('[data-testid="stChatInput"]');
-            if (chatInputContainer && chatInputContainer.parentNode) {
-                chatInputContainer.parentNode.insertBefore(previewBox, chatInputContainer);
-            } else {
-                return;
-            }
-            
-            previewBox.style.cssText = `
-                display: flex; justify-content: space-between; align-items: center;
-                background: #1E1E1E; border-left: 4px solid #4CAF50; border-radius: 12px 12px 0 0;
-                padding: 10px 14px 20px 14px; margin-bottom: -15px; z-index: 999;
-                position: relative; width: 100%; max-width: 800px; margin: 0 auto;
-                box-sizing: border-box; border-top: 1px solid #333; border-right: 1px solid #333;
-            `;
+    parentWindow.showReplyPreview = (text, author) => {
+        // Remove existing preview if any to prevent duplicates
+        let existingPreview = parentDoc.getElementById('custom-reply-preview');
+        if (existingPreview) {
+            existingPreview.remove();
         }
+        
+        let previewBox = parentDoc.createElement('div');
+        previewBox.id = 'custom-reply-preview';
+        
+        const chatInputContainer = parentDoc.querySelector('[data-testid="stChatInput"]');
+        if (chatInputContainer && chatInputContainer.parentNode) {
+            chatInputContainer.parentNode.insertBefore(previewBox, chatInputContainer);
+        } else {
+            return;
+        }
+        
+        previewBox.style.cssText = `
+            display: flex; justify-content: space-between; align-items: center;
+            background: #1E1E1E; border-left: 4px solid #4CAF50; border-radius: 12px 12px 0 0;
+            padding: 10px 14px 20px 14px; margin-bottom: -15px; z-index: 999;
+            position: relative; width: 100%; max-width: 800px; margin: 0 auto;
+            box-sizing: border-box; border-top: 1px solid #333; border-right: 1px solid #333;
+        `;
         
         previewBox.innerHTML = `
             <div style="display: flex; flex-direction: column; overflow: hidden; max-width: 90%;">
                 <span style="color: #4CAF50; font-weight: 600; font-size: 13px; margin-bottom: 3px;">${author}</span>
                 <span style="color: #aaa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px;">${text}</span>
             </div>
-            <div id="close-reply-preview" style="cursor: pointer; padding: 5px; color: #aaa; font-size: 16px;">✕</div>
+            <div id="close-reply-preview" style="cursor: pointer; padding: 15px 5px; margin: -10px 0; color: #aaa; font-size: 18px; min-width: 40px; text-align: center; z-index: 1000;">✕</div>
         `;
         
-        replyContext = text;
+        const closeBtn = previewBox.querySelector('#close-reply-preview');
+        if (closeBtn) {
+            const closeHandler = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                previewBox.remove();
+                parentWindow.replyContext = null;
+                parentWindow.replyAuthor = null;
+            };
+            closeBtn.addEventListener('click', closeHandler);
+            closeBtn.addEventListener('touchstart', closeHandler, {passive: false});
+        }
         
-        parentDoc.getElementById('close-reply-preview').onclick = () => {
-            previewBox.style.display = 'none';
-            replyContext = null;
-        };
-        
-        previewBox.style.display = 'flex';
+        parentWindow.replyContext = text;
+        parentWindow.replyAuthor = author;
     };
 
     const resetDrag = () => {
@@ -748,6 +757,51 @@ if (!parentDoc.getElementById("swipe-reply-injected")) {
         isDragging = false;
         swipedElement = null;
         currentX = 0;
+    };
+    
+    // Global event listener for clicks (handles close button and send button)
+    parentDoc.addEventListener('click', (e) => {
+        // Close preview
+        if (e.target.closest('#close-reply-preview')) {
+            const previewBox = parentDoc.getElementById('custom-reply-preview');
+            if (previewBox) previewBox.remove();
+            parentWindow.replyContext = null;
+            parentWindow.replyAuthor = null;
+            return;
+        }
+        
+        // Intercept send button click
+        const sendBtn = e.target.closest('[data-testid="stChatInput"] button');
+        if (sendBtn) {
+            const chatInput = parentDoc.querySelector('[data-testid="stChatInput"] textarea');
+            parentWindow.interceptSend(chatInput);
+        }
+    }, true); // use capture phase
+    
+    // Intercept Enter key on chat input
+    parentDoc.addEventListener('keydown', (e) => {
+        const chatInput = e.target.closest('[data-testid="stChatInput"] textarea');
+        if (chatInput && e.key === 'Enter' && !e.shiftKey) {
+            parentWindow.interceptSend(chatInput);
+        }
+    }, true);
+    
+    parentWindow.interceptSend = (chatInput) => {
+        if (parentWindow.replyContext && chatInput) {
+            const val = chatInput.value;
+            // Only prepend if the user actually typed something
+            if (val.trim().length > 0) {
+                const newVal = '> ' + parentWindow.replyContext + '\\n\\n' + val;
+                const nativeSetter = Object.getOwnPropertyDescriptor(parentWindow.HTMLTextAreaElement.prototype, "value").set;
+                nativeSetter.call(chatInput, newVal);
+                chatInput.dispatchEvent(new Event('input', { bubbles: true}));
+            }
+            // Clear the preview immediately
+            const previewBox = parentDoc.getElementById('custom-reply-preview');
+            if (previewBox) previewBox.remove();
+            parentWindow.replyContext = null;
+            parentWindow.replyAuthor = null;
+        }
     };
     
     const onTouchStart = (e) => {
@@ -765,7 +819,6 @@ if (!parentDoc.getElementById("swipe-reply-injected")) {
     const onTouchMove = (e) => {
         if (!isDragging || !swipedElement) return;
         
-        // Prevent default text selection during drag
         if (e.type.includes('mouse')) e.preventDefault();
         
         const x = e.type.includes('mouse') ? e.pageX : e.touches[0].clientX;
@@ -789,14 +842,13 @@ if (!parentDoc.getElementById("swipe-reply-injected")) {
             const ts = clone.querySelector('.timestamp-container');
             if(ts) ts.remove();
             
-            // Remove blockquotes if replying to a reply
             const bqs = clone.querySelectorAll('blockquote');
             bqs.forEach(bq => bq.remove());
             
             let textToQuote = clone.innerText.trim();
             if (textToQuote.length > 80) textToQuote = textToQuote.substring(0, 80) + '...';
             
-            showReplyPreview(textToQuote, author);
+            parentWindow.showReplyPreview(textToQuote, author);
         }
         
         resetDrag();
@@ -810,42 +862,11 @@ if (!parentDoc.getElementById("swipe-reply-injected")) {
     parentDoc.addEventListener('mousemove', onTouchMove);
     parentDoc.addEventListener('mouseup', onTouchEnd);
     parentDoc.addEventListener('mouseleave', resetDrag);
-    
-    // Hook send to prepend quote
-    const chatInput = parentDoc.querySelector('[data-testid="stChatInput"] textarea');
-    if (chatInput && !chatInput.dataset.replyHooked) {
-        chatInput.dataset.replyHooked = 'true';
-        
-        const interceptSend = () => {
-            if (replyContext) {
-                const val = chatInput.value;
-                if (val.trim().length > 0) {
-                    const newVal = '> ' + replyContext + '\\n\\n' + val;
-                    const nativeSetter = Object.getOwnPropertyDescriptor(parentDoc.defaultView.HTMLTextAreaElement.prototype, "value").set;
-                    nativeSetter.call(chatInput, newVal);
-                    chatInput.dispatchEvent(new Event('input', { bubbles: true}));
-                }
-                const previewBox = parentDoc.getElementById('custom-reply-preview');
-                if (previewBox) previewBox.style.display = 'none';
-                replyContext = null;
-            }
-        };
-        
-        chatInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                interceptSend();
-            }
-        }, true);
-        
-        const formContainer = chatInput.closest('[data-testid="stChatInput"]');
-        if (formContainer) {
-            formContainer.addEventListener('click', (e) => {
-                if (e.target.closest('button')) {
-                    interceptSend();
-                }
-            }, true);
-        }
-    }
+}
+
+// Re-inject preview if Streamlit re-rendered and wiped it out, but context still exists
+if (parentWindow.replyContext && !parentDoc.getElementById('custom-reply-preview')) {
+    parentWindow.showReplyPreview(parentWindow.replyContext, parentWindow.replyAuthor);
 }
 </script>
 """
