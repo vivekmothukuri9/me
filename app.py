@@ -823,6 +823,11 @@ if (!parentWindow.chatReplySystemInited) {
         
         if (parentDoc.getSelection().toString().length > 0) return;
         
+        // Prevent default text selection/ghost dragging on desktop
+        if (e.type.includes('mouse')) {
+            e.preventDefault();
+        }
+        
         swipedElement = bubble;
         startX = e.type.includes('mouse') ? e.pageX : e.touches[0].clientX;
         isDragging = true;
