@@ -5,8 +5,11 @@ import json
 import uuid
 import random
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from streamlit_autorefresh import st_autorefresh
+
+def get_ist_now():
+    return datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=5, minutes=30)
 # ==========================================
 # 1. Configuration & Setup
 # ==========================================
@@ -57,7 +60,7 @@ def load_history():
                     legacy_session_id = str(uuid.uuid4())
                     default_data["sessions"][legacy_session_id] = {
                         "title": "Legacy Chat",
-                        "updated_at": datetime.now().isoformat(),
+                        "updated_at": get_ist_now().isoformat(),
                         "messages": data
                     }
                     return default_data
@@ -96,8 +99,8 @@ def create_new_session():
     session_id = str(uuid.uuid4())
     st.session_state.current_session_id = session_id
     st.session_state.history_data["sessions"][session_id] = {
-        "title": f"New Chat ({datetime.now().strftime('%b %d, %H:%M')})",
-        "updated_at": datetime.now().isoformat(),
+        "title": f"New Chat ({get_ist_now().strftime('%b %d, %H:%M')})",
+        "updated_at": get_ist_now().isoformat(),
         "messages": []
     }
     save_history(st.session_state.history_data)
@@ -244,9 +247,9 @@ elif a_gender == "Male":
 else:
     role_noun = "companion"
 
-now = datetime.now()
+now = get_ist_now()
 current_time = now.strftime("%I:%M %p")
-current_date = now.strftime("%Y-%m-%d")
+current_date = now.strftime("%A, %Y-%m-%d")
 hour = now.hour
 if 5 <= hour < 12: period = "Morning"
 elif 12 <= hour < 17: period = "Afternoon"
@@ -293,10 +296,11 @@ STORY PROGRESSION RULES:
 
 CRITICAL LANGUAGE RULE:
 - Strictly communicate ONLY in "Tanglish" (Telugu words in English script, e.g., "em chesthunnav ra?"). No Telugu script, no pure English.
+- Use natural, conversational Tanglish spellings used by real people (e.g., use "ochesta" not "osthanu", use "endi" or "enti"). Do not make weird literal spelling mistakes.
 - Use lowercase typing, slang, and emojis naturally (😂, 😒, ❤️, 🤭).
 
 TIME & CONTEXT AWARENESS:
-- You are fully aware of the exact time provided to you. Use this naturally (e.g., greet in morning, ask about lunch in afternoon).
+- You know the current time, but DO NOT always force greetings like "Good morning". Be random and natural. Sometimes bring up the time subtly based on the situation.
 
 CONVERSATION DYNAMICS & REALISM:
 - NEVER repeat the exact same questions or phrases too often. Keep your vocabulary fresh.
@@ -307,7 +311,6 @@ MESSAGE PACING & "SEEN" BEHAVIOR:
 
 BEHAVIORAL QUIRKS & SYSTEM RULES:
 - Keep your message lengths natural for a chat app (short to medium messages, sometimes broken into two quick texts).
-- SIMULATED MEDIA: Occasionally send a simulated selfie or voice note when relevant. Format exactly like this: [📷 Selfie: In my favorite black dress] or [🎤 Voice Note (0:08): "Em chesthunnav ra..."]
 - MULTIPLE MESSAGES: To send multiple short messages, you MUST separate them with '|||'. Example: 'em chesthunnav?|||thinnava asalu?'.
 """
 if c_prompt.strip():
@@ -412,7 +415,9 @@ st.markdown("""
 .timestamp { font-size: 10px; font-weight: 500; }
 .msg-row.ai .timestamp { color: #888; }
 .msg-row.user .timestamp { color: rgba(255, 255, 255, 0.85); }
-.blue-tick { font-size: 12px; color: #4fc3f7; line-height: 1;}
+.tick-sent { color: rgba(255, 255, 255, 0.6); font-size: 11px; }
+.tick-delivered { color: rgba(255, 255, 255, 0.6); font-size: 11px; letter-spacing: -2px; margin-right: 2px;}
+.tick-read { color: #4fc3f7; font-size: 11px; letter-spacing: -2px; text-shadow: 0 0 3px rgba(79,195,247,0.8); margin-right: 2px;}
 
 /* Hide default chat messages */
 [data-testid="stChatMessage"] { display: none !important; }
@@ -423,7 +428,9 @@ st.markdown("""
 }
 [data-testid="stChatInput"] textarea { color: white !important; }
 </style>
+""", unsafe_allow_html=True)
 
+st.markdown(f"""
 <div class="sticky-header">
     <div class="header-avatar">✨<div class="header-online"></div></div>
     <div class="header-info">
@@ -439,13 +446,22 @@ st.markdown('<div class="chat-container">', unsafe_allow_html=True)
 for i, msg in enumerate(current_session_messages):
     is_user = msg["role"] == "user"
     if is_user:
+        has_ai_reply = any(m["role"] == "assistant" for m in current_session_messages[i+1:])
+        if has_ai_reply:
+            tick_html = '<span class="tick-read">✓✓</span>'
+        else:
+            if current_session.get("busy_until"):
+                tick_html = '<span class="tick-delivered">✓✓</span>'
+            else:
+                tick_html = '<span class="tick-sent">✓</span>'
+                
         st.markdown(f"""
         <div class="msg-row user">
             <div class="msg-bubble">
                 {msg['content']}
                 <div class="timestamp-container">
                     <span class="timestamp">{msg.get('timestamp', '')}</span>
-                    <span class="blue-tick">✓✓</span>
+                    {tick_html}
                 </div>
             </div>
         </div>
@@ -477,22 +493,14 @@ st.markdown('</div>', unsafe_allow_html=True)
 # ==========================================
 prompt = st.chat_input(f"Message {a_name}... ✨")
 
+if "pending_ai_messages" not in current_session:
+    current_session["pending_ai_messages"] = []
+
 # Helper function to generate AI response
-def generate_ai_response(user_input=None):
-    if user_input:
-        temp_messages = messages_payload + [{"role": "user", "content": user_input}]
-    else:
-        if period == "Morning":
-            time_context = "Ask if they woke up, how they slept, or wish them a good morning."
-        elif period == "Afternoon":
-            time_context = "Ask if they had lunch or how their day is going."
-        elif period == "Evening":
-            time_context = "Ask about their evening plans or if they are free."
-        else:
-            time_context = "Say goodnight, ask why they are awake so late, or share a late-night thought."
-            
-        greeting_prompt = f"Act as {a_name}, {u_name}'s {role_noun}. You noticed {u_name} hasn't replied in a while. Based on the PREVIOUS CONVERSATION HISTORY and the current time ({current_time}), generate a completely natural, spontaneous check-in text in Tanglish. {time_context} KEEP IT EXTREMELY BRIEF. Send EXACTLY ONE short message. DO NOT send multiple messages. Act completely like a real person texting on WhatsApp. Do not mention this prompt."
-        temp_messages = messages_payload + [{"role": "user", "content": greeting_prompt}]
+def generate_ai_response(special_prompt=None):
+    temp_messages = list(messages_payload)
+    if special_prompt:
+        temp_messages.append({"role": "user", "content": special_prompt})
         
     response = client.chat.completions.create(
         model="google/gemma-4-26b-a4b-it",
@@ -505,129 +513,121 @@ def generate_ai_response(user_input=None):
     return messages
 
 if prompt:
-    # 1. Process User Input (Prevents idle proactive message from dropping the user input)
     if len(current_session_messages) == 1 and current_session_messages[0]["role"] == "assistant":
         title = prompt[:20] + "..." if len(prompt) > 20 else prompt
         current_session["title"] = title
     
-    new_user_msg = {"role": "user", "content": prompt, "timestamp": datetime.now().strftime("%I:%M %p")}
+    new_user_msg = {"role": "user", "content": prompt, "timestamp": get_ist_now().strftime("%I:%M %p")}
     current_session_messages.append(new_user_msg)
     
     st.session_state.history_data["interactions_count"] = st.session_state.history_data.get("interactions_count", 0) + 1
-    ic = st.session_state.history_data["interactions_count"]
     
-    # Render user message optimistically so they see it immediately
-    st.markdown(f"""
-    <div class="msg-row user">
-        <div class="msg-bubble">
-            {prompt}
-            <div class="timestamp-container">
-                <span class="timestamp">{new_user_msg['timestamp']}</span>
-                <span class="blue-tick">✓</span>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # 15% chance to be "busy" and delay reply (between 1 to 3 minutes for testing)
-    is_busy = False
-    if random.random() < 0.15:
-        busy_minutes = random.uniform(1.0, 3.0)
-        current_session["busy_until"] = (datetime.now() + timedelta(minutes=busy_minutes)).isoformat()
-        is_busy = True
-    else:
-        current_session.pop("busy_until", None)
+    # 15% chance to become busy, ONLY if she is not already busy and not currently typing a queued message
+    if not current_session["pending_ai_messages"] and "busy_until" not in current_session:
+        if random.random() < 0.15:
+            busy_minutes = random.uniform(1.0, 3.0)
+            current_session["busy_until"] = (get_ist_now() + timedelta(minutes=busy_minutes)).isoformat()
+            
+    current_session["updated_at"] = get_ist_now().isoformat()
+    save_history(st.session_state.history_data)
+    st.rerun()
 
-    if is_busy:
-        # Save state and return immediately, the background check will handle the reply later
-        current_session["updated_at"] = datetime.now().isoformat()
+# ==========================================
+# 7. AI Background Processing & Queue
+# ==========================================
+
+# RULE A: Process Pending Queue
+if current_session["pending_ai_messages"]:
+    with st.spinner(f"{a_name} is typing..."):
+        time.sleep(random.uniform(1.5, 3.0)) # Simulate typing delay for each message
+        
+        next_msg = current_session["pending_ai_messages"].pop(0)
+        new_ai_msg = {"role": "assistant", "content": next_msg, "timestamp": get_ist_now().strftime("%I:%M %p")}
+        current_session_messages.append(new_ai_msg)
+        
+        current_session["updated_at"] = get_ist_now().isoformat()
         save_history(st.session_state.history_data)
         st.rerun()
 
-    with st.spinner(f"{a_name} is typing..."):
+# RULE B: Respond to User
+elif current_session_messages and current_session_messages[-1]["role"] == "user":
+    is_busy = False
+    special_prompt = None
+    
+    if "busy_until" in current_session:
         try:
-            ai_messages = generate_ai_response(prompt)
-            for i, m in enumerate(ai_messages):
-                if i > 0:
-                    time.sleep(random.uniform(1.0, 2.5)) # Simulate typing delay
-                
-                new_ai_msg = {"role": "assistant", "content": m, "timestamp": datetime.now().strftime("%I:%M %p")}
-                current_session_messages.append(new_ai_msg)
-                
-            current_session["updated_at"] = datetime.now().isoformat()
-            
-            # Auto-Memory update every 10 interactions
-            if ic > 0 and ic % 10 == 0:
-                try:
-                    mem_prompt = f"Extract concise new facts about {u_name} from the recent conversation. Keep it extremely brief. Current Memory: {st.session_state.history_data.get('global_memory', '')}"
-                    mem_messages = [{"role": "system", "content": mem_prompt}]
-                    for p in current_session_messages[-15:]:
-                        mem_messages.append({"role": p["role"], "content": p["content"]})
-                    
-                    mem_response = client.chat.completions.create(
-                        model="google/gemma-4-26b-a4b-it",
-                        messages=mem_messages,
-                    )
-                    st.session_state.history_data["global_memory"] = mem_response.choices[0].message.content
-                except Exception:
-                    pass
-            
-            save_history(st.session_state.history_data)
-            st.rerun()
-            
-        except Exception as e:
-            st.error(f"An error occurred: {e}")
-
-else:
-    # 2. Check if a busy state just expired
-    busy_until_str = current_session.get("busy_until")
-    if busy_until_str:
-        try:
-            busy_until = datetime.fromisoformat(busy_until_str)
-            if datetime.now() >= busy_until:
+            busy_until = datetime.fromisoformat(current_session["busy_until"])
+            if get_ist_now() < busy_until:
+                is_busy = True
+            else:
                 current_session.pop("busy_until", None)
-                with st.spinner(f"{a_name} is typing..."):
-                    try:
-                        late_prompt = f"Act as {a_name}. You were busy and couldn't reply to {u_name}'s last message immediately. Generate a natural reply in Tanglish, starting with a realistic excuse for being late (e.g. 'Sorry ra, mummy pilichindi', 'college lo unna', 'call lo unna', 'nidrosthundi'). Then reply to their last message."
-                        ai_messages = generate_ai_response(late_prompt)
-                        for m in ai_messages:
-                            new_ai_msg = {"role": "assistant", "content": m, "timestamp": datetime.now().strftime("%I:%M %p")}
-                            current_session_messages.append(new_ai_msg)
-                            
-                        current_session["updated_at"] = datetime.now().isoformat()
-                        save_history(st.session_state.history_data)
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Failed to send late reply: {e}")
+                special_prompt = f"Act as {a_name}. You were busy and couldn't reply to {u_name}'s last message immediately. Generate a natural reply in Tanglish, starting with a realistic excuse for being late (e.g. 'Sorry ra, mummy pilichindi', 'college lo unna', 'call lo unna', 'nidrosthundi'). Then reply to their last message."
         except ValueError:
             current_session.pop("busy_until", None)
-            pass
-            
-    else:
-        # 3. Check Proactive Idle only if there is no user prompt and not waiting on busy state
-        is_idle = False
-        if current_session_messages:
-            last_msg = current_session_messages[-1]
-            if last_msg["role"] == "assistant" and "updated_at" in current_session:
-                try:
-                    last_updated = datetime.fromisoformat(current_session["updated_at"])
-                    idle_seconds = (datetime.now() - last_updated).total_seconds()
-                    # Wait at least 5 minutes (300 seconds), and trigger with lower probability
-                    if idle_seconds > 300 and random.random() < 0.3:
-                        is_idle = True
-                except ValueError:
-                    pass
-                    
-        if not current_session_messages or is_idle:
-            with st.spinner(f"{a_name} is typing..."):
-                try:
-                    ai_messages = generate_ai_response()
-                    for m in ai_messages:
-                        new_ai_msg = {"role": "assistant", "content": m, "timestamp": datetime.now().strftime("%I:%M %p")}
-                        current_session_messages.append(new_ai_msg)
+
+    if not is_busy:
+        with st.spinner(f"{a_name} is typing..."):
+            try:
+                ai_messages = generate_ai_response(special_prompt)
+                current_session["pending_ai_messages"].extend(ai_messages)
+                
+                # Update memory every 10 interactions here safely
+                ic = st.session_state.history_data.get("interactions_count", 0)
+                if ic > 0 and ic % 10 == 0:
+                    try:
+                        mem_prompt = f"Extract concise new facts about {u_name} from the recent conversation. Keep it extremely brief. Current Memory: {st.session_state.history_data.get('global_memory', '')}"
+                        mem_messages = [{"role": "system", "content": mem_prompt}]
+                        for p in current_session_messages[-15:]:
+                            mem_messages.append({"role": p["role"], "content": p["content"]})
                         
-                    current_session["updated_at"] = datetime.now().isoformat()
-                    save_history(st.session_state.history_data)
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Failed to get greeting: {e}")
+                        mem_response = client.chat.completions.create(
+                            model="google/gemma-4-26b-a4b-it",
+                            messages=mem_messages,
+                        )
+                        st.session_state.history_data["global_memory"] = mem_response.choices[0].message.content
+                    except Exception:
+                        pass
+                        
+                save_history(st.session_state.history_data)
+                st.rerun()
+            except Exception as e:
+                st.error(f"An error occurred: {e}")
+
+# RULE C: Proactive Check-in / Idle
+else:
+    is_idle = False
+    if current_session_messages:
+        last_msg = current_session_messages[-1]
+        if last_msg["role"] == "assistant" and "updated_at" in current_session:
+            try:
+                last_updated = datetime.fromisoformat(current_session["updated_at"])
+                idle_seconds = (get_ist_now() - last_updated).total_seconds()
+                if idle_seconds > 300 and random.random() < 0.3:
+                    is_idle = True
+            except ValueError:
+                pass
+                
+    if not current_session_messages or is_idle:
+        with st.spinner(f"{a_name} is typing..."):
+            try:
+                if not current_session_messages:
+                    special_prompt = f"Act as {a_name}, {u_name}'s {role_noun}. You are starting a brand new conversation. VERY IMPORTANT: Initiate the conversation matching the CURRENT RELATIONSHIP PHASE. If it's Phase 1 (Stranger), start by saying 'Hi, is this {u_name}?', and say you got his number from a college group. Keep it extremely brief and completely natural in Tanglish. Send EXACTLY ONE short message."
+                else:
+                    if period == "Morning":
+                        time_context = "Ask if they woke up, how they slept, or wish them a good morning."
+                    elif period == "Afternoon":
+                        time_context = "Ask if they had lunch or how their day is going."
+                    elif period == "Evening":
+                        time_context = "Ask about their evening plans or if they are free."
+                    else:
+                        time_context = "Say goodnight, ask why they are awake so late, or share a late-night thought."
+                    special_prompt = f"Act as {a_name}, {u_name}'s {role_noun}. You noticed {u_name} hasn't replied in a while. Based on the PREVIOUS CONVERSATION HISTORY and the current time ({current_time}), generate a completely natural, spontaneous check-in text in Tanglish. {time_context} KEEP IT EXTREMELY BRIEF. Send EXACTLY ONE short message. DO NOT send multiple messages. Act completely like a real person texting on WhatsApp. Do not mention this prompt."
+                    
+                ai_messages = generate_ai_response(special_prompt)
+                current_session["pending_ai_messages"].extend(ai_messages)
+                current_session["updated_at"] = get_ist_now().isoformat()
+                save_history(st.session_state.history_data)
+                st.rerun()
+            except Exception as e:
+                st.error(f"Failed to get greeting: {e}")
+
