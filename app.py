@@ -436,12 +436,33 @@ st.markdown("""
 .tick-delivered { color: rgba(255, 255, 255, 0.6); font-size: 11px; letter-spacing: -2px; margin-right: 2px;}
 .tick-read { color: #4fc3f7; font-size: 11px; letter-spacing: -2px; text-shadow: 0 0 3px rgba(79,195,247,0.8); margin-right: 2px;}
 
+/* Reply Blockquote Styling inside message bubbles */
+.msg-bubble blockquote {
+    border-left: 4px solid #4CAF50;
+    background: rgba(0, 0, 0, 0.15);
+    margin: 0 0 8px 0;
+    padding: 6px 10px;
+    border-radius: 4px 8px 8px 4px;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.7);
+    font-style: normal;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    border-right: 1px solid rgba(255,255,255,0.05);
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.msg-row.user .msg-bubble blockquote {
+    border-left: 4px solid #FFF; 
+    background: rgba(255, 255, 255, 0.15); 
+    color: rgba(255, 255, 255, 0.9);
+}
+
 /* Hide default chat messages */
 [data-testid="stChatMessage"] { display: none !important; }
 
 /* Style Chat Input */
 [data-testid="stChatInput"] {
     background: #1E1E1E !important; border: 1px solid #333 !important; border-radius: 30px !important; padding: 5px 10px !important;
+    position: relative; z-index: 1000;
 }
 [data-testid="stChatInput"] textarea { color: white !important; }
 </style>
@@ -665,7 +686,7 @@ else:
 # ==========================================
 # 8. Swipe-to-Reply JS Injection
 # ==========================================
-components.html("""
+components.html(f"""
 <script>
 const parentDoc = window.parent.document;
 if (!parentDoc.getElementById("swipe-reply-injected")) {
@@ -677,12 +698,62 @@ if (!parentDoc.getElementById("swipe-reply-injected")) {
     let currentX = 0;
     let swipedElement = null;
     let isDragging = false;
+    let replyContext = null;
+    
+    const showReplyPreview = (text, author) => {
+        let previewBox = parentDoc.getElementById('custom-reply-preview');
+        if (!previewBox) {
+            previewBox = parentDoc.createElement('div');
+            previewBox.id = 'custom-reply-preview';
+            
+            const chatInputContainer = parentDoc.querySelector('[data-testid="stChatInput"]');
+            if (chatInputContainer && chatInputContainer.parentNode) {
+                chatInputContainer.parentNode.insertBefore(previewBox, chatInputContainer);
+            } else {
+                return;
+            }
+            
+            previewBox.style.cssText = `
+                display: flex; justify-content: space-between; align-items: center;
+                background: #1E1E1E; border-left: 4px solid #4CAF50; border-radius: 12px 12px 0 0;
+                padding: 10px 14px 20px 14px; margin-bottom: -15px; z-index: 999;
+                position: relative; width: 100%; max-width: 800px; margin: 0 auto;
+                box-sizing: border-box; border-top: 1px solid #333; border-right: 1px solid #333;
+            `;
+        }
+        
+        previewBox.innerHTML = `
+            <div style="display: flex; flex-direction: column; overflow: hidden; max-width: 90%;">
+                <span style="color: #4CAF50; font-weight: 600; font-size: 13px; margin-bottom: 3px;">${{author}}</span>
+                <span style="color: #aaa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px;">${{text}}</span>
+            </div>
+            <div id="close-reply-preview" style="cursor: pointer; padding: 5px; color: #aaa; font-size: 16px;">✕</div>
+        `;
+        
+        replyContext = text;
+        
+        parentDoc.getElementById('close-reply-preview').onclick = () => {
+            previewBox.style.display = 'none';
+            replyContext = null;
+        };
+        
+        previewBox.style.display = 'flex';
+    };
+
+    const resetDrag = () => {
+        if (swipedElement) {
+            swipedElement.style.transition = 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+            swipedElement.style.transform = 'translateX(0)';
+        }
+        isDragging = false;
+        swipedElement = null;
+        currentX = 0;
+    };
     
     const onTouchStart = (e) => {
         const bubble = e.target.closest('.msg-bubble');
         if (!bubble) return;
         
-        // Don't drag if they are selecting text
         if (parentDoc.getSelection().toString().length > 0) return;
         
         swipedElement = bubble;
@@ -693,13 +764,17 @@ if (!parentDoc.getElementById("swipe-reply-injected")) {
     
     const onTouchMove = (e) => {
         if (!isDragging || !swipedElement) return;
+        
+        // Prevent default text selection during drag
+        if (e.type.includes('mouse')) e.preventDefault();
+        
         const x = e.type.includes('mouse') ? e.pageX : e.touches[0].clientX;
         currentX = x - startX;
         
         if (currentX > 0 && currentX < 80) {
-            swipedElement.style.transform = `translateX(${currentX}px)`;
+            swipedElement.style.transform = `translateX(${{currentX}}px)`;
         } else if (currentX < 0 && currentX > -80) {
-            swipedElement.style.transform = `translateX(${currentX}px)`;
+            swipedElement.style.transform = `translateX(${{currentX}}px)`;
         }
     };
     
@@ -707,37 +782,70 @@ if (!parentDoc.getElementById("swipe-reply-injected")) {
         if (!isDragging || !swipedElement) return;
         
         if (Math.abs(currentX) > 40) {
-            // Trigger Reply
+            const isUser = swipedElement.closest('.msg-row').classList.contains('user');
+            const author = isUser ? "You" : "{a_name}";
+            
             const clone = swipedElement.cloneNode(true);
             const ts = clone.querySelector('.timestamp-container');
             if(ts) ts.remove();
+            
+            // Remove blockquotes if replying to a reply
+            const bqs = clone.querySelectorAll('blockquote');
+            bqs.forEach(bq => bq.remove());
+            
             let textToQuote = clone.innerText.trim();
             if (textToQuote.length > 80) textToQuote = textToQuote.substring(0, 80) + '...';
             
-            const chatInput = parentDoc.querySelector('[data-testid="stChatInput"] textarea');
-            if (chatInput) {
-                const nativeInputValueSetter = Object.getOwnPropertyDescriptor(parentDoc.defaultView.HTMLTextAreaElement.prototype, "value").set;
-                nativeInputValueSetter.call(chatInput, `> ${textToQuote}\\n\\n`);
-                const ev = new Event('input', { bubbles: true});
-                chatInput.dispatchEvent(ev);
-                chatInput.focus();
-            }
+            showReplyPreview(textToQuote, author);
         }
         
-        swipedElement.style.transition = 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
-        swipedElement.style.transform = 'translateX(0)';
-        isDragging = false;
-        swipedElement = null;
-        currentX = 0;
+        resetDrag();
     };
     
-    parentDoc.addEventListener('touchstart', onTouchStart);
-    parentDoc.addEventListener('touchmove', onTouchMove);
+    parentDoc.addEventListener('touchstart', onTouchStart, {{passive: false}});
+    parentDoc.addEventListener('touchmove', onTouchMove, {{passive: false}});
     parentDoc.addEventListener('touchend', onTouchEnd);
     
     parentDoc.addEventListener('mousedown', onTouchStart);
     parentDoc.addEventListener('mousemove', onTouchMove);
     parentDoc.addEventListener('mouseup', onTouchEnd);
+    parentDoc.addEventListener('mouseleave', resetDrag);
+    
+    // Hook send to prepend quote
+    const chatInput = parentDoc.querySelector('[data-testid="stChatInput"] textarea');
+    if (chatInput && !chatInput.dataset.replyHooked) {
+        chatInput.dataset.replyHooked = 'true';
+        
+        const interceptSend = () => {
+            if (replyContext) {
+                const val = chatInput.value;
+                if (val.trim().length > 0) {
+                    const newVal = '> ' + replyContext + '\\n\\n' + val;
+                    const nativeSetter = Object.getOwnPropertyDescriptor(parentDoc.defaultView.HTMLTextAreaElement.prototype, "value").set;
+                    nativeSetter.call(chatInput, newVal);
+                    chatInput.dispatchEvent(new Event('input', {{ bubbles: true}}));
+                }
+                const previewBox = parentDoc.getElementById('custom-reply-preview');
+                if (previewBox) previewBox.style.display = 'none';
+                replyContext = null;
+            }
+        };
+        
+        chatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                interceptSend();
+            }
+        }, true);
+        
+        const formContainer = chatInput.closest('[data-testid="stChatInput"]');
+        if (formContainer) {
+            formContainer.addEventListener('click', (e) => {
+                if (e.target.closest('button')) {
+                    interceptSend();
+                }
+            }, true);
+        }
+    }
 }
 </script>
 """, height=0, width=0)
