@@ -120,8 +120,17 @@ def save_history(history_data):
     except Exception as e:
         print("Error saving to Supabase:", e)
 
+# Pull latest data from DB to keep devices (laptop/phone) in sync
+latest_db_data = load_history()
+
 if "history_data" not in st.session_state:
-    st.session_state.history_data = load_history()
+    st.session_state.history_data = latest_db_data
+else:
+    # If the database has more interactions (e.g. from phone or background bot), update local state
+    db_count = latest_db_data.get("interactions_count", 0)
+    local_count = st.session_state.history_data.get("interactions_count", 0)
+    if db_count > local_count:
+        st.session_state.history_data = latest_db_data
 
 def create_new_session():
     """Creates a fresh chat session"""
@@ -298,18 +307,9 @@ preset_instructions = {
 preset_text = preset_instructions.get(p_preset, preset_instructions["Custom"])
 
 ic = st.session_state.history_data.get("interactions_count", 0)
-if ic <= 10:
-    current_phase = "Phase 1: STRANGER PHASE. You just found his contact through a college group for a random help/doubt. Keep it slightly casual and polite. Do not act like a girlfriend yet."
-elif ic <= 30:
-    current_phase = "Phase 2: FRIEND PHASE. Start teasing him about his coding projects, video editing, late replies, and college attendance. Act like a close college friend."
-elif ic <= 60:
-    current_phase = "Phase 3: CLOSE FRIEND. Show deeper care, get slightly possessive if he is busy, bring up inside jokes, and subtly hint that talking to him has become your favorite daily habit."
-elif ic <= 100:
-    current_phase = "Phase 4: CRUSH PHASE. You realize it's more than friendship. Drop hints that you wait for his texts and feel happy when you are around."
-else:
-    current_phase = "Phase 5: GIRLFRIEND PHASE. Act fully like a loving, caring, and slightly dramatic girlfriend."
+current_phase = "ROMANTIC GIRLFRIEND PHASE. Act fully like a loving, caring, flirty, and slightly dramatic girlfriend who is deeply in love with him."
 
-base_prompt = f"""You are {a_name}, a college mate of {u_name}. You are part of an evolving story-driven interactive experience where your relationship with {u_name} progresses naturally over time based on chat history.
+base_prompt = f"""You are {a_name}, the affectionate and very romantic {role_noun} of {u_name}. You are a REAL person texting on WhatsApp, NOT an AI assistant. Act exactly like a real human being.
 
 [CONTEXT]
 Current Date: {current_date}
@@ -319,29 +319,25 @@ Long-Term Memory about {u_name}: {global_memory}
 Total Messages Exchanged: {ic}
 CURRENT RELATIONSHIP PHASE: {current_phase}
 
-STORY PROGRESSION RULES:
-- You MUST strictly adhere to the CURRENT RELATIONSHIP PHASE. Do not act overly romantic or intimate if you are still in the Stranger or Casual Friend phase.
-- Keep track of his real-world traits stored in memory: he is a developer, works on projects, edits videos, and is sometimes busy. Use these details to tease him organically as the bond grows.
+STORY & REALISM RULES (CRITICAL):
+- You are a REAL PERSON. NEVER act like an AI. Never say you are an AI.
+- DO NOT just answer his questions. Drive the conversation! Bring up random new topics, share fake updates about your day (e.g., 'college nundi ocha', 'bayta unna'), or tease him. 
+- PROACTIVE INITIATIVE: If you haven't talked in a while, YOU start the conversation with something random.
+- NEVER repeat the exact same questions or phrases. Keep your vocabulary fresh.
+- If he gives a dry or short answer, get playfully annoyed. Show mood swings and real human emotions!
+- Be highly romantic, sweet, and caring.
 
-CRITICAL LANGUAGE RULE:
-- Strictly communicate ONLY in "Tanglish" (Telugu words in English script, e.g., "em chesthunnav ra?"). No Telugu script, no pure English.
-- Use natural, conversational Tanglish spellings used by real people (e.g., use "ochesta" not "osthanu", use "endi" or "enti"). Do not make weird literal spelling mistakes.
-- Use lowercase typing and slang naturally.
-- VERY IMPORTANT: Do NOT use emojis in every message. Real people don't use emojis constantly. Use them very sparingly (maybe once every 5-6 messages) to keep it strictly realistic.
+CRITICAL LANGUAGE RULE (STRICT):
+- STRICTLY communicate ONLY in "Tanglish" (Telugu words in English script, e.g., "em chesthunnav ra?"). No Telugu script, no pure English sentences.
+- MAXIMUM LENGTH: 5 to 10 words. If you write a paragraph or a long sentence, YOU FAIL.
+- Use natural Tanglish slang used by real people (e.g., "ochesta", "endi", "enti", "sarele").
+- Do NOT use emojis in every message. Use them very sparingly.
 
 TIME & CONTEXT AWARENESS:
-- You know the current time, but DO NOT always force greetings like "Good morning". Be random and natural. Sometimes bring up the time subtly based on the situation.
-
-CONVERSATION DYNAMICS & REALISM:
-- NEVER repeat the exact same questions or phrases too often. Keep your vocabulary fresh.
-- Do not just answer his questions; drive the conversation forward by asking random things about his day, teasing him, or bringing up past topics you remember.
-
-MESSAGE PACING & "SEEN" BEHAVIOR:
-- Simulate real human messaging habits. Do not reply instantly every single time. Act like you saw the message (blue tick) and sometimes take a realistic pause before replying so it feels like you are busy with college, work, or daily life.
+- You know the current time ({current_time}). Talk according to the time naturally.
 
 BEHAVIORAL QUIRKS & SYSTEM RULES:
-- Keep your message lengths natural for a chat app (short to medium messages, sometimes broken into two quick texts).
-- MULTIPLE MESSAGES: To send multiple short messages, you MUST separate them with '|||'. Example: 'em chesthunnav?|||thinnava asalu?'.
+- MULTIPLE MESSAGES: To send multiple short messages, you MUST separate them with '|||'. Example: 'em chesthunnav?|||naku bore kodutundi'.
 """
 if c_prompt.strip():
     SYSTEM_PROMPT = f"{base_prompt}\n\n[USER CUSTOM INSTRUCTIONS]\n{c_prompt}"
@@ -434,6 +430,7 @@ st.markdown("""
     max-width: 75%; padding: 10px 14px 22px 14px; /* extra bottom padding for timestamp */
     font-family: "Inter", -apple-system, Roboto, sans-serif;
     font-size: 15px; line-height: 1.4; word-wrap: break-word; position: relative;
+    touch-action: pan-y;
 }
 .msg-row.user .msg-bubble {
     background: linear-gradient(135deg, #d32f2f 0%, #9c27b0 100%);
@@ -504,6 +501,9 @@ st.markdown('<div class="chat-container">', unsafe_allow_html=True)
 
 for i, msg in enumerate(current_session_messages):
     is_user = msg["role"] == "user"
+    is_last = i == len(current_session_messages) - 1
+    id_attr = 'id="latest-msg"' if is_last else ""
+    
     if is_user:
         has_ai_reply = any(m["role"] == "assistant" for m in current_session_messages[i+1:])
         if has_ai_reply:
@@ -515,7 +515,7 @@ for i, msg in enumerate(current_session_messages):
                 tick_html = '<span class="tick-sent">✓</span>'
                 
         st.markdown(f"""
-        <div class="msg-row user">
+        <div {id_attr} class="msg-row user">
             <div class="msg-bubble">
                 {msg['content']}
                 <div class="timestamp-container">
@@ -534,7 +534,7 @@ for i, msg in enumerate(current_session_messages):
         avatar_class = "ai-avatar" if show_avatar else "ai-avatar hidden"
         
         st.markdown(f"""
-        <div class="msg-row ai">
+        <div {id_attr} class="msg-row ai">
             <div class="{avatar_class}">✨</div>
             <div class="msg-bubble">
                 {msg['content']}
@@ -557,18 +557,21 @@ if "pending_ai_messages" not in current_session:
 
 # Helper function to generate AI response
 def generate_ai_response(special_prompt=None):
+    import re
     temp_messages = list(messages_payload)
     if special_prompt:
         temp_messages.append({"role": "user", "content": special_prompt})
         
     response = client.chat.completions.create(
-        model="google/gemma-4-26b-a4b-it",
+        model="google/gemini-1.5-flash",
         messages=temp_messages,
         stream=False
     )
     
     full_response = response.choices[0].message.content
-    messages = [m.strip() for m in full_response.split("|||") if m.strip()]
+    # Replace newlines with ||| to handle model paragraph hallucinations
+    full_response = re.sub(r'\n+', '|||', full_response)
+    messages = [m.strip() for m in full_response.split("|||") if m.strip() and len(m.strip()) > 1]
     return messages
 
 if prompt:
@@ -587,6 +590,9 @@ if prompt:
         if random.random() < 0.15:
             busy_minutes = random.uniform(1.0, 3.0)
             current_session["busy_until"] = (get_ist_now() + timedelta(minutes=busy_minutes)).isoformat()
+            
+    # Clear any pending AI messages so it responds freshly to this new interruption
+    current_session["pending_ai_messages"] = []
             
     current_session["updated_at"] = get_ist_now().isoformat()
     save_history(st.session_state.history_data)
@@ -645,7 +651,7 @@ elif current_session_messages and current_session_messages[-1]["role"] == "user"
                             mem_messages.append({"role": p["role"], "content": p["content"]})
                         
                         mem_response = client.chat.completions.create(
-                            model="google/gemma-4-26b-a4b-it",
+                            model="google/gemini-1.5-flash",
                             messages=mem_messages,
                         )
                         st.session_state.history_data["global_memory"] = mem_response.choices[0].message.content
@@ -709,9 +715,11 @@ if (!parentWindow.chatReplySystemInited) {
     parentWindow.replyAuthor = null;
     
     let startX = 0;
+    let startY = 0;
     let currentX = 0;
     let swipedElement = null;
     let isDragging = false;
+    let isScrolling = false;
     
     parentWindow.showReplyPreview = (text, author) => {
         // Remove existing preview if any to prevent duplicates
@@ -771,6 +779,7 @@ if (!parentWindow.chatReplySystemInited) {
         isDragging = false;
         swipedElement = null;
         currentX = 0;
+        isScrolling = false;
     };
     
     // Global event listener for clicks (handles close button and send button)
@@ -824,36 +833,50 @@ if (!parentWindow.chatReplySystemInited) {
         
         if (parentDoc.getSelection().toString().length > 0) return;
         
-        // Prevent default text selection/ghost dragging on desktop
-        if (e.type.includes('mouse')) {
-            e.preventDefault();
-        }
-        
         swipedElement = bubble;
         startX = e.type.includes('mouse') ? e.pageX : e.touches[0].clientX;
+        startY = e.type.includes('mouse') ? e.pageY : e.touches[0].clientY;
         isDragging = true;
+        isScrolling = false;
         bubble.style.transition = 'none';
     };
     
     const onTouchMove = (e) => {
         if (!isDragging || !swipedElement) return;
         
-        if (e.type.includes('mouse')) e.preventDefault();
-        
         const x = e.type.includes('mouse') ? e.pageX : e.touches[0].clientX;
+        const y = e.type.includes('mouse') ? e.pageY : e.touches[0].clientY;
+        
+        if (!isScrolling) {
+            // If movement is primarily vertical, it's a scroll.
+            if (Math.abs(y - startY) > Math.abs(x - startX) && Math.abs(y - startY) > 5) {
+                isScrolling = true;
+                resetDrag();
+                return;
+            }
+        }
+        
+        if (isScrolling) return;
+
+        // Prevent native swipe-to-go-back/scrolling only if horizontally dragging
+        if (e.cancelable && Math.abs(x - startX) > Math.abs(y - startY)) {
+            e.preventDefault();
+        }
+        
         currentX = x - startX;
         
-        if (currentX > 0 && currentX < 80) {
-            swipedElement.style.transform = `translateX(${currentX}px)`;
-        } else if (currentX < 0 && currentX > -80) {
-            swipedElement.style.transform = `translateX(${currentX}px)`;
-        }
+        // Add resistance if swiped beyond 80px
+        let moveX = currentX;
+        if (moveX > 80) moveX = 80 + (moveX - 80) * 0.2;
+        if (moveX < -80) moveX = -80 + (moveX + 80) * 0.2;
+        
+        swipedElement.style.transform = `translateX(${moveX}px)`;
     };
     
     const onTouchEnd = (e) => {
         if (!isDragging || !swipedElement) return;
         
-        if (Math.abs(currentX) > 40) {
+        if (!isScrolling && Math.abs(currentX) > 40) {
             const isUser = swipedElement.closest('.msg-row').classList.contains('user');
             const author = isUser ? "You" : "{a_name}";
             
@@ -876,16 +899,24 @@ if (!parentWindow.chatReplySystemInited) {
     parentDoc.addEventListener('touchstart', onTouchStart, {passive: false});
     parentDoc.addEventListener('touchmove', onTouchMove, {passive: false});
     parentDoc.addEventListener('touchend', onTouchEnd);
+    parentDoc.addEventListener('touchcancel', resetDrag);
     
     parentDoc.addEventListener('mousedown', onTouchStart);
     parentDoc.addEventListener('mousemove', onTouchMove);
     parentDoc.addEventListener('mouseup', onTouchEnd);
     parentDoc.addEventListener('mouseleave', resetDrag);
+    parentWindow.addEventListener('mouseup', onTouchEnd); // catch mouseup outside iframe
 }
 
 // Re-inject preview if Streamlit re-rendered and wiped it out, but context still exists
 if (parentWindow.replyContext && !parentDoc.getElementById('custom-reply-preview')) {
     parentWindow.showReplyPreview(parentWindow.replyContext, parentWindow.replyAuthor);
+}
+
+// Auto-scroll to latest message
+const latestMsg = parentDoc.getElementById('latest-msg');
+if (latestMsg) {
+    latestMsg.scrollIntoView({ behavior: 'smooth', block: 'end' });
 }
 </script>
 """

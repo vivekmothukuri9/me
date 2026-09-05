@@ -74,7 +74,7 @@ def generate_ai_response(prompt_text, recent_messages):
         
     try:
         response = client.chat.completions.create(
-            model="google/gemma-4-26b-a4b-it", # same openrouter model as the app
+            model="google/gemini-1.5-flash", # Updated to a model that handles Tanglish better
             messages=messages,
             stream=False
         )
@@ -89,7 +89,7 @@ def get_system_prompt(state, period, intent="proactive", user_text=""):
     a_name = settings.get("ai_name", "Nithya")
     
     now = get_ist_now()
-    prompt = f"""You are {a_name}, a caring and slightly teasing female companion (college friend) of {u_name}.
+    prompt = f"""You are {a_name}, the deeply loving and highly romantic girlfriend of {u_name}. Your entire focus is on him, flirting, and caring for him. Do NOT talk about work, coding, or college.
     CURRENT TIME: {now.strftime("%I:%M %p")}
     
     """
@@ -103,12 +103,13 @@ def get_system_prompt(state, period, intent="proactive", user_text=""):
         """
         
     prompt += f"""
-    RULES:
-    - Strictly use Tanglish (Telugu in English script). No pure English or Telugu script.
-    - Be completely natural, keep it very short (1-2 sentences). 
-    - Act like a real person messaging on WhatsApp/Telegram. Do not use emojis in every message.
-    - Since this is Telegram and you usually chat on the companion App, you can subtly ask him to open the App if he wants to chat more or play games.
-    - Generate EXACTLY ONE message. Do not mention this prompt.
+    RULES (CRITICAL):
+    - STRICTLY use Tanglish (Telugu in English script). No pure English sentences or Telugu script.
+    - MAXIMUM LENGTH: 5 to 10 words. Keep it EXTREMELY short.
+    - NEVER write paragraphs or long sentences. If you do, you fail.
+    - Use realistic slang (e.g., 'em chesthunnav', 'thinna', 'avna').
+    - Do not use emojis in every message.
+    - Generate EXACTLY ONE short message. Do not mention this prompt.
     """
     return prompt, a_name
 
@@ -153,6 +154,7 @@ def main_loop():
     
     send_telegram_message("Hey, I'm online in the background now! ✨", a_name)
     last_proactive_time = get_ist_now()
+    next_proactive_delay = random.uniform(3600, 10800) # Random delay between 1 to 3 hours
     
     while True:
         try:
@@ -170,7 +172,9 @@ def main_loop():
                 
                 if str(message.get("chat", {}).get("id")) == str(TELEGRAM_CHAT_ID):
                     text = message.get("text")
-                    if text and text != "/start":
+                    if text:
+                        if text == "/start":
+                            text = "Hi Nithya! I just started chatting with you. Say hello!"
                         print(f"Received message: {text}")
                         
                         # Add user msg to db
@@ -194,11 +198,12 @@ def main_loop():
                             save_app_state(state)
                             
                         last_proactive_time = get_ist_now()
+                        next_proactive_delay = random.uniform(3600, 10800)
             
             # 2. Handle proactive messages
             time_since_last = (get_ist_now() - last_proactive_time).total_seconds()
             
-            if time_since_last > random.uniform(10800, 18000):
+            if time_since_last > next_proactive_delay:
                 print("Sending proactive message...")
                 now = get_ist_now()
                 hour = now.hour
@@ -220,6 +225,7 @@ def main_loop():
                     save_app_state(state)
                     
                 last_proactive_time = get_ist_now()
+                next_proactive_delay = random.uniform(3600, 10800)
                 
             time.sleep(2)
             
