@@ -563,7 +563,7 @@ def generate_ai_response(special_prompt=None):
         temp_messages.append({"role": "user", "content": special_prompt})
         
     response = client.chat.completions.create(
-        model="google/gemini-1.5-flash",
+        model="google/gemini-3.8-flash",
         messages=temp_messages,
         stream=False
     )
@@ -651,7 +651,7 @@ elif current_session_messages and current_session_messages[-1]["role"] == "user"
                             mem_messages.append({"role": p["role"], "content": p["content"]})
                         
                         mem_response = client.chat.completions.create(
-                            model="google/gemini-1.5-flash",
+                            model="google/gemini-3.8-flash",
                             messages=mem_messages,
                         )
                         st.session_state.history_data["global_memory"] = mem_response.choices[0].message.content

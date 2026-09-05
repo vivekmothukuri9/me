@@ -74,7 +74,7 @@ def generate_ai_response(prompt_text, recent_messages):
         
     try:
         response = client.chat.completions.create(
-            model="google/gemini-1.5-flash", # Updated to a model that handles Tanglish better
+            model="google/gemini-3.8-flash", # Updated to latest model
             messages=messages,
             stream=False
         )

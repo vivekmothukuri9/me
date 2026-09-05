@@ -113,7 +113,7 @@ def main():
                     messages_payload.append({"role": "user", "content": special_prompt})
 
                     ai_res = client.chat.completions.create(
-                        model="google/gemini-1.5-flash",
+                        model="google/gemini-3.8-flash",
                         messages=messages_payload,
                         stream=False
                     )

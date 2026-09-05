@@ -1,18 +1,20 @@
 import urllib.request
-import urllib.parse
+import json
+import os
+import toml
 
-bot_token = "8836944324:AAF9wPnqAUzPxJMaDhM9Jy_1H_oGFnZAYB4"
-chat_id = "8999981074"
-message_text = "Test message"
-bot_name = "Nithya"
+secrets_path = os.path.join(".streamlit", "secrets.toml")
+with open(secrets_path, "r", encoding="utf-8") as f:
+    secrets = toml.load(f)
 
-url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-data = urllib.parse.urlencode({'chat_id': chat_id, 'text': f"💖 {bot_name}:\n\n{message_text}"}).encode('utf-8')
+API_KEY = secrets.get("OPENROUTER_API_KEY")
+
+url = "https://openrouter.ai/api/v1/models"
+req = urllib.request.Request(url, headers={"Authorization": f"Bearer {API_KEY}"})
 try:
-    req = urllib.request.Request(url, data=data)
     response = urllib.request.urlopen(req)
-    print("Success:", response.read().decode('utf-8'))
+    data = json.loads(response.read().decode('utf-8'))
+    gemini_models = [m['id'] for m in data['data'] if 'gemini' in m['id'].lower()]
+    print("Available Gemini Models:", gemini_models)
 except Exception as e:
-    print("Telegram error:", e)
-    if hasattr(e, 'read'):
-        print("Response:", e.read().decode('utf-8'))
+    print("Error:", e)
